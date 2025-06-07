@@ -1,0 +1,55 @@
+.notfound {
+    min-height: 100vh;
+    padding-top: 80px;
+    padding-bottom: 80px;
+    background: linear-gradient(135deg, #f0f4f8, #d9e2ec);
+    overflow: hidden;
+  }
+  
+  /* أنيميشن 404 */
+  .animate-404 {
+    animation: shake 1s ease-in-out infinite alternate;
+  }
+  
+  /* أنيميشن Fade-in */
+  .animate-fade {
+    opacity: 0;
+    animation: fadeInUp 1s ease-in-out forwards;
+  }
+  
+  .animate-fade-delay {
+    opacity: 0;
+    animation: fadeInUp 1s ease-in-out forwards;
+    animation-delay: 0.5s;
+  }
+  
+  /* زر الرجوع مع رفرفة */
+  .animate-btn {
+    animation: fadeInUp 1s ease-in-out forwards;
+    animation-delay: 1s;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .animate-btn:hover {
+    transform: translateY(-5px) scale(1.05) rotate(-1deg);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+  }
+  
+  /* Keyframes */
+  @keyframes shake {
+    0%   { transform: rotate(-3deg) scale(1.02); }
+    50%  { transform: rotate(3deg) scale(1.05); }
+    100% { transform: rotate(-3deg) scale(1.02); }
+  }
+  
+  @keyframes fadeInUp {
+    0% {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  

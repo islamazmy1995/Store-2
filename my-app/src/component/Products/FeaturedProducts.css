@@ -1,0 +1,59 @@
+/* غلاف الصورة */
+.image-wrapper {
+    position: relative;
+  }
+  
+  /* زر إضافة للعربة – مخفي افتراضياً */
+  .add-to-cart-btn {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 2;
+    color: white;
+    background-color: #0d6efd;
+  }
+  
+  @media (min-width: 992px) {
+    .product:hover .add-to-cart-btn {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .add-to-cart-btn:hover{
+        background-color: white;
+        color: #0d6efd;
+      }
+  }
+  
+  
+  @media (max-width: 991.98px) {
+    .add-to-cart-btn {
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: auto;
+      position: static;
+      transform: none;
+      margin-top: 10px;
+      color: white;
+      background-color: #0d6efd;
+    }
+  }
+  
+  
+  .product {
+    position: relative;
+    padding: 10px;
+    margin-bottom: 20px;
+    cursor: pointer;
+    border: none;
+    box-shadow: none;
+    transition: none;
+  }
+  
+ 
+
