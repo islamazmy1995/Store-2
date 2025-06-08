@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
-import 'bootstrap/dist/css/bootstrap.min.css';
 import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '../Context/UserContext';
 import axios from 'axios';
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 const Login = () => {
   const navigate = useNavigate();
   const { setUserToken } = useUser();
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const validationSchema = Yup.object({
     email: Yup.string()
@@ -20,53 +22,60 @@ const Login = () => {
       .required('كلمة المرور مطلوبة'),
   });
 
-  const handleSubmit = async (values, { resetForm, setSubmitting, setErrors }) => {
+  const handleSubmit = async (values, { resetForm, setErrors }) => {
+    setError('');
+    setIsSubmitting(true);
+
     try {
       const response = await axios.post(
         `${process.env.REACT_APP_API_BASE_URL}/auth/signin`,
         {
           email: values.email,
-          password: values.password,
+          password: values.password
         }
       );
-  
-      if (response.data && response.data.message === 'success' && response.data.token) {
+
+      if (response.data?.status === 'success' && response.data.token) {
         resetForm();
-        localStorage.setItem('userToken', response.data.token);
-        setUserToken(response.data.token);
         const token = `Bearer ${response.data.token}`;
-        localStorage.setItem('userToken', token); 
         setUserToken(token);
         navigate('/');
-      } else if (response.data && response.data.error) {
-        setErrors({ email: response.data.error || 'البريد الإلكتروني أو كلمة المرور غير صالحة' });
       } else {
-        setErrors({ email: 'البريد الإلكتروني أو كلمة المرور غير صالحة' });
-        console.error('Invalid login response:', response.data);
+        setError('البريد الإلكتروني أو كلمة المرور غير صالحة');
       }
-      
-  
     } catch (error) {
-      if (error.response && error.response.data) {
+      console.error('Login error:', error);
+      
+      if (error.response?.data) {
         if (error.response.data.errors) {
+          // Handle validation errors
           const apiErrors = error.response.data.errors;
-          setErrors({
-            email: apiErrors.email || '',
-            password: apiErrors.password || '',
-          });
+          const formErrors = {};
+          if (apiErrors.email) formErrors.email = apiErrors.email;
+          if (apiErrors.password) formErrors.password = apiErrors.password;
+          setErrors(formErrors);
+        } else if (error.response.data.message) {
+          // Handle API error message
+          setError(error.response.data.message);
         } else {
-          setErrors({ email: error.response.data.message || 'خطأ في البريد أو كلمة المرور' });
+          setError('حدث خطأ غير متوقع');
         }
       } else {
-        setErrors({ email: 'حدث خطأ، حاول مرة أخرى' });
+        setError('تعذر الاتصال بالخادم. يرجى المحاولة مرة أخرى لاحقاً');
       }
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
   return (
     <div className="container mt-5" style={{ maxWidth: '400px' }}>
       <h2 className="mb-4 text-center">تسجيل الدخول</h2>
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          {error}
+        </div>
+      )}
+      
       <Formik
         initialValues={{
           email: '',
@@ -75,18 +84,19 @@ const Login = () => {
         validationSchema={validationSchema}
         onSubmit={handleSubmit}
       >
-        {({ isSubmitting }) => (
+        {({ errors, touched }) => (
           <Form>
             <div className="mb-3">
               <label htmlFor="email" className="form-label">البريد الإلكتروني</label>
               <Field
                 type="email"
                 name="email"
-                className="form-control"
+                className={`form-control ${errors.email && touched.email ? 'is-invalid' : ''}`}
                 autoComplete="email"
                 id="email"
+                placeholder="أدخل بريدك الإلكتروني"
               />
-              <ErrorMessage name="email" component="div" className="text-danger" />
+              <ErrorMessage name="email" component="div" className="invalid-feedback" />
             </div>
 
             <div className="mb-3 position-relative">
@@ -94,43 +104,62 @@ const Login = () => {
               <Field
                 type={showPassword ? 'text' : 'password'}
                 name="password"
-                className="form-control"
+                className={`form-control ${errors.password && touched.password ? 'is-invalid' : ''}`}
                 autoComplete="current-password"
+                placeholder="أدخل كلمة المرور"
                 id="password"
               />
               <button
                 type="button"
+                className="btn btn-link position-absolute end-0 top-50 translate-middle-y text-muted"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  top: '38px',
-                  right: '10px',
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontSize: '0.9rem',
-                  color: '#007bff'
-                }}
-                tabIndex={-1}
+                style={{ zIndex: 10, textDecoration: 'none' }}
+                aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
               >
-                {showPassword ? 'إخفاء' : 'عرض'}
+                <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
               </button>
-              <ErrorMessage name="password" component="div" className="text-danger mt-1" />
+              <ErrorMessage name="password" component="div" className="invalid-feedback" />
             </div>
 
-            <div className="d-flex justify-content-between gap-2 mt-3">
-              <button
-                type="submit"
-                className="btn btn-primary w-50"
+            <div className="mb-3 form-check">
+              <Field 
+                type="checkbox" 
+                id="rememberMe" 
+                name="rememberMe" 
+                className="form-check-input"
+              />
+              <label className="form-check-label" htmlFor="rememberMe">
+                تذكرني
+              </label>
+            </div>
+
+            <div className="d-grid gap-2">
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'جاري الدخول...' : 'دخول'}
+                {isSubmitting ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    جاري تسجيل الدخول...
+                  </>
+                ) : 'تسجيل الدخول'}
               </button>
+            </div>
 
-              <Link to="/register" className="btn btn-outline-secondary w-50 text-center">
-                ليس لديك حساب؟
-              </Link>
+            <div className="mt-3 text-center">
+              <p className="mb-1">
+                <Link to="/forgot-password" className="text-primary">
+                  نسيت كلمة المرور؟
+                </Link>
+              </p>
+              <p className="mb-0">
+                ليس لديك حساب؟{' '}
+                <Link to="/register" className="text-primary fw-bold">
+                  إنشاء حساب جديد
+                </Link>
+              </p>
             </div>
           </Form>
         )}

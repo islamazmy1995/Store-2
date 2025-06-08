@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { useNavigate } from 'react-router-dom'; 
-import './Register.css'; 
+import { useNavigate } from 'react-router-dom';
+import './Register.css';
 import { useUser } from '../Context/UserContext';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
 
 const Register = () => {
   const navigate = useNavigate();
-  const { setUser } = useUser();
+  const { setUserToken, loadUserCart } = useUser();
+  const [successMessage, setSuccessMessage] = useState('');
+  const [generalError, setGeneralError] = useState('');
+
   const validationSchema = Yup.object({
     name: Yup.string()
       .min(3, 'الاسم يجب أن يكون 3 أحرف على الأقل')
@@ -18,7 +20,7 @@ const Register = () => {
     phone: Yup.string()
       .matches(/^01[0-9]{9}$/, 'رقم الهاتف غير صالح، يجب أن يكون 11 رقم ويبدأ بـ 01')
       .required('رقم الهاتف مطلوب'),
-    email: Yup.string()
+    email: Yup.string() 
       .email('البريد غير صالح')
       .required('البريد الإلكتروني مطلوب'),
     password: Yup.string()
@@ -30,9 +32,8 @@ const Register = () => {
   });
 
   const handleSubmit = async (values, { resetForm, setSubmitting, setErrors }) => {
+    setGeneralError('');
     try {
-      console.log("Password:", values.password);
-      console.log("Confirm Password:", values.confirmPassword);
       const response = await axios.post(
         `${process.env.REACT_APP_API_BASE_URL}/auth/signup`,
         {
@@ -44,31 +45,41 @@ const Register = () => {
         }
       );
 
-      if (response.data && response.data.status === 'success' && response.data.data && response.data.data.token) {
+      if (response.data?.status === 'success' && response.data.data?.token) {
         const token = response.data.data.token;
-        localStorage.setItem('userToken', token);
-        setUser(response.data.data.user);
+        localStorage.setItem('userToken', `Bearer ${token}`);
+        setUserToken(token);
+        loadUserCart(token);
         resetForm();
-        navigate('/login', { state: { registered: true } });
-      } else if (response.data && response.data.error) {
-        setErrors({ general: response.data.error || 'حدث خطأ أثناء التسجيل. حاول مرة أخرى.' });
+        setSuccessMessage('تم التسجيل بنجاح! سيتم توجيهك إلى صفحة تسجيل الدخول.');
+        setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 1500);
+      
+      } else if (response.data?.error || response.data?.message === 'error') {
+        setErrors({ general: response.data.error });
+      } else if (response.data?.message) {
+        setErrors({ general: response.data.message });
       } else {
         setErrors({ general: 'حدث خطأ أثناء التسجيل. حاول مرة أخرى.' });
       }
     } catch (error) {
-      console.log(error.response.data);
-
       if (error.response) {
-        const errorMsg = error.response.data.errors;
-        if (errorMsg) {
-          setErrors({
-            email: errorMsg.email,
-            phone: errorMsg.phone,
-            name: errorMsg.name,
-            password: errorMsg.password,
+        if (error.response.status === 409) {
+          setGeneralError('البريد الإلكتروني مسجل مسبقاً. هل تريد ');
+        } else if (error.response.data?.errors) {
+          const errorMsg = error.response.data.errors;
+          setErrors({ 
+            email: errorMsg.email || '',
+            phone: errorMsg.phone || '',
+            name: errorMsg.name || '',
+            password: errorMsg.password || '',
+            confirmPassword: errorMsg.confirmPassword || ''
           });
+        } else if (error.response.data?.message) {
+          setErrors({ general: error.response.data.message });
         } else {
-          setErrors({ general: error.response.data.message || 'خطأ غير معروف' });
+          setErrors({ general: 'خطأ غير معروف' });
         }
       } else {
         setErrors({ general: 'فشل الاتصال بالخادم. حاول لاحقًا.' });
@@ -94,8 +105,27 @@ const Register = () => {
       >
         {({ isSubmitting, errors }) => (
           <Form>
-            {errors.general && (
-              <div className="alert alert-danger">{errors.general}</div>
+            {successMessage && (
+              <div className="alert alert-success">{successMessage}</div>
+            )}
+            {(errors.general || generalError) && (
+              <div className="alert alert-danger">
+                {generalError ? (
+                  <>
+                    {generalError}
+                    <button
+                      type="button"
+                      className="btn btn-link p-0"
+                      onClick={() => navigate('/login')}
+                    >
+                      تسجيل الدخول
+                    </button>
+                    {'؟'}
+                  </>
+                ) : (
+                  errors.general
+                )}
+              </div>
             )}
 
             <div className="mb-3">
@@ -135,9 +165,14 @@ const Register = () => {
             >
               {isSubmitting ? 'جاري التسجيل...' : 'تسجيل'}
             </button>
-            <Link to="/login" className="btn btn-outline-secondary w-20 text-center">
+
+            <button
+              type="button"
+              className="btn btn-outline-secondary ms-3"
+              onClick={() => navigate('/login')}
+            >
               هل لديك حساب بالفعل؟
-            </Link> 
+            </button>
           </Form>
         )}
       </Formik>

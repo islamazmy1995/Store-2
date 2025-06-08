@@ -1,186 +1,280 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useUser } from '../Context/UserContext'; // Assuming UserContext is in ../Context/
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import axios from 'axios';
+import { useUser } from './UserContext';
 
 const CartContext = createContext();
 
 export const CartProvider = ({ children }) => {
-  const { userToken } = useUser();
-  const [cartItems, setCartItems] = useState(() => {
-    const storedCart = localStorage.getItem('cartItems');
-    return storedCart ? JSON.parse(storedCart) : [];
-  });
-
-  useEffect(() => {
-    localStorage.setItem('cartItems', JSON.stringify(cartItems));
-  }, [cartItems]);
+  const { getToken } = useUser();
+  const [cartItems, setCartItems] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Function to load cart from server
-  const loadCartFromServer = useCallback(async (currentToken) => {
-    if (!currentToken) return;
+  const loadCartFromServer = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setCartItems([]);
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
     try {
       const response = await axios.get(
         `${process.env.REACT_APP_API_BASE_URL}/cart`,
         {
           headers: {
-            Authorization: `Bearer ${currentToken}`,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           },
         }
       );
-      if (response.data && response.data.status === 'success' && response.data.data) {
+      
+      if (response.data?.status === 'success' && response.data.data) {
         const serverCartItems = response.data.data.products.map(item => ({
           productId: item.product._id,
           quantity: item.count,
           title: item.product.title,
-          price: item.product.price, // unit price
+          price: item.product.price,
           image: item.product.imageCover,
-          // size: item.product.size || undefined, // If backend supports size per cart item variant
+          size: item.size || undefined,
+          product: item.product // Keep full product data
         }));
         setCartItems(serverCartItems);
       } else {
-        // Handle cases where response is not as expected but not an outright error
-        console.warn('Cart data from server was not in the expected format:', response.data);
-        setCartItems([]); // Or handle as appropriate, e.g. keep local if server cart is empty/invalid
+        setCartItems([]);
       }
     } catch (error) {
-      console.error('Failed to load cart from server:', error);
-      // If loading fails (e.g. 404 if cart is empty, or other errors), clear local cart or handle error
-      // For now, let's clear local cart if server fetch fails to avoid stale data, 
-      // unless it's a network error where user might want to keep local for offline.
-      // This needs careful consideration based on desired UX.
-      // A common pattern is to clear if it's a definitive 'no cart' or 'auth error'.
-      if (error.response && (error.response.status === 404 || error.response.status === 401 || error.response.status === 403)) {
-         setCartItems([]); // Clear cart if not found or auth issue
-      }
-      // Otherwise, might retain local cart for offline or temporary server issues.
+      console.error('Failed to load cart from server:', error.response?.data || error.message);
+      setError(error.response?.data?.message || 'Failed to load cart');
+      setCartItems([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, []); // useCallback with empty dependency, relies on token passed as arg
+  }, [getToken]);
 
-  // Effect to load cart when userToken changes or on initial load with token
+  // Load cart when token changes
   useEffect(() => {
-    if (userToken) {
-      loadCartFromServer(userToken);
-    } else {
-      // User logged out or no token initially
-      setCartItems([]); // Clear cart if no user token
-    }
-  }, [userToken, loadCartFromServer]);
+    loadCartFromServer();
+  }, [loadCartFromServer]);
 
-  // const token = localStorage.getItem('userToken'); // This is now replaced by userToken from context
-
+  // Add item to cart
   const addToCart = async (productId, quantity, size, productData = null) => {
+    const token = getToken();
+    if (!token) {
+      throw new Error('User not authenticated');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
     try {
-      if (!userToken) {
-        throw new Error('User not authenticated');
-      }
+      const payload = { 
+        productId, 
+        quantity,
+        ...(size && { size })
+      };
 
       const response = await axios.post(
         `${process.env.REACT_APP_API_BASE_URL}/cart`,
-        { productId, quantity, size }, // Add size to the request body
+        payload,
         {
           headers: {
-            Authorization: `Bearer ${userToken}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }
       );
 
-      // Check if the response is successful
-      if (!response.data || response.data.status !== 'success') {
-        throw new Error('Failed to add product to cart');
+      if (response.data?.status === 'success') {
+        await loadCartFromServer();
+        return response.data;
       }
-
-      // First update local state
-      setCartItems(prevItems => {
-        const existingItem = prevItems.find(
-          item => item.productId === productId && item.size === size
-        );
-        if (existingItem) {
-          return prevItems.map(item =>
-            item.productId === productId && item.size === size
-              ? { ...item, quantity: item.quantity + quantity }
-              : item
-          );
-        } else {
-          const product = productData || response.data.data.product;
-          return [
-            ...prevItems,
-            {
-              productId,
-              quantity,
-              size,
-              title: product.title,
-              price: product.price,
-              image: product.imageCover,
-            },
-          ];
-        }
-      });
-
-      // Return the server response
-      return response.data;
+      return null;
     } catch (error) {
-      console.error('Failed to add product to cart:', error);
+      console.error('Failed to add product to cart:', error.response?.data || error.message);
+      setError(error.response?.data?.message || 'Failed to add to cart');
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const removeFromCart = async (productId, size) => {
-    const previousCartItems = [...cartItems]; // Store previous state for rollback
-
-    // Optimistic client-side removal
-    setCartItems(prevItems =>
-      prevItems.filter(item => !(item.productId === productId && item.size === size))
-    );
-
-    if (userToken) { // Only attempt server delete if user is logged in
-      try {
-        await axios.delete(`${process.env.REACT_APP_API_BASE_URL}/cart`, {
-          headers: { Authorization: `Bearer ${userToken}` },
-          data: { productId }, // Ensure your API expects productId in the body for DELETE
-        });
-        // Server deletion successful
-      } catch (err) {
-        console.error('خطأ في حذف المنتج من الـ API:', err);
-        // Rollback client-side change if server deletion fails
-        setCartItems(previousCartItems);
-        // Optionally, notify the user about the failure
-      }
-    } else {
-      // If no userToken, the item is only removed from the local (localStorage) cart.
-      // No server call to make or rollback.
+  // Remove item from cart
+  const removeFromCart = async (productId, size = null) => {
+    const token = getToken();
+    if (!token) {
+      throw new Error('User not authenticated');
     }
-  };
 
-  const clearCart = async () => {
-    if (!userToken) {
-      console.error('User token not found. Cannot clear server-side cart.');
-      // Optionally, prevent local clear or notify user
-      // For now, we proceed to clear locally if no token, though ideally this path isn't hit for logged-in users.
-      // Or better: if no token, we probably shouldn't even attempt server clear.
-      // Let's assume token should be present for this operation.
-    }
+    setIsLoading(true);
+    setError(null);
+
     try {
-      // API call to clear cart on the server
-      await axios.delete(`${process.env.REACT_APP_API_BASE_URL}/cart`, {
-        headers: {
-          Authorization: `Bearer ${userToken}`,
-        },
-      });
-      // If server call is successful, then clear the local cart
-      setCartItems([]);
+      const response = await axios.delete(
+        `${process.env.REACT_APP_API_BASE_URL}/cart/${productId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          data: size ? { size } : undefined, // Send size in request body if provided
+        }
+      );
+
+      if (response.data?.status === 'success') {
+        await loadCartFromServer();
+        return response.data;
+      }
+      return null;
     } catch (error) {
-      console.error('Failed to clear cart on server:', error);
-      // If server call fails, the local cart is not cleared to maintain consistency
-      // or to allow for a retry. User could be notified here.
+      console.error('Failed to remove item from cart:', error.response?.data || error.message);
+      setError(error.response?.data?.message || 'Failed to remove from cart');
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Clear entire cart
+  const clearCart = async () => {
+    const token = getToken();
+    if (!token) {
+      throw new Error('User not authenticated');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await axios.delete(
+        `${process.env.REACT_APP_API_BASE_URL}/cart`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.data?.status === 'success') {
+        setCartItems([]);
+        return response.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to clear cart:', error.response?.data || error.message);
+      setError(error.response?.data?.message || 'Failed to clear cart');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update cart item quantity
+  const updateCartItemQuantity = async (productId, newQuantity, size = null) => {
+    const token = getToken();
+    if (!token) {
+      throw new Error('User not authenticated');
+    }
+
+    if (newQuantity < 1) {
+      return removeFromCart(productId, size);
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const payload = { 
+        quantity: newQuantity,
+        ...(size && { size })
+      };
+
+      const response = await axios.put(
+        `${process.env.REACT_APP_API_BASE_URL}/cart/${productId}`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.data?.status === 'success') {
+        await loadCartFromServer();
+        return response.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to update cart item quantity:', error.response?.data || error.message);
+      setError(error.response?.data?.message || 'Failed to update quantity');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Calculate total items in cart
+  const getCartItemCount = useCallback(() => {
+    return cartItems.reduce((total, item) => total + item.quantity, 0);
+  }, [cartItems]);
+
+  // Calculate cart total
+  const getCartTotal = useCallback(() => {
+    return cartItems.reduce(
+      (total, item) => total + (item.price * item.quantity),
+      0
+    );
+  }, [cartItems]);
+
+  // Check if a product is in the cart
+  const isInCart = useCallback((productId, size = null) => {
+    return cartItems.some(item => 
+      item.productId === productId && 
+      (size !== null ? item.size === size : true)
+    );
+  }, [cartItems]);
+
+  // Get item quantity in cart
+  const getItemQuantity = useCallback((productId, size = null) => {
+    const item = cartItems.find(item => 
+      item.productId === productId && 
+      (size !== null ? item.size === size : true)
+    );
+    return item ? item.quantity : 0;
+  }, [cartItems]);
 
   return (
-    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, clearCart }}>
+    <CartContext.Provider
+      value={{
+        cartItems,
+        addToCart,
+        removeFromCart,
+        clearCart,
+        updateCartItemQuantity,
+        getCartItemCount,
+        getCartTotal,
+        isInCart,
+        getItemQuantity,
+        isLoading,
+        error,
+        loadCartFromServer
+      }}
+    >
       {children}
     </CartContext.Provider>
   );
 };
 
-export const useCart = () => useContext(CartContext);
+export const useCart = () => {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
+  }
+  return context;
+};

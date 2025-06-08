@@ -1,74 +1,89 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { jwtDecode } from 'jwt-decode';
-import axios from 'axios';
 
 export const UserContext = createContext();
 
 export const UserContextProvider = ({ children }) => {
   const [userToken, setUserToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Load token from localStorage on initial load
   useEffect(() => {
-    const tokenFromStorage = localStorage.getItem('userToken');
-    if (tokenFromStorage) {
-      try {
-        // First validate token format
+    const loadToken = () => {
+      const tokenFromStorage = localStorage.getItem('userToken');
+      if (tokenFromStorage) {
         let token = tokenFromStorage;
+        // Ensure token has Bearer prefix
         if (!token.startsWith('Bearer ')) {
           token = `Bearer ${token}`;
           localStorage.setItem('userToken', token);
         }
 
-        // Try to decode token
         try {
+          // Validate token expiration
           const decodedToken = jwtDecode(token.replace('Bearer ', ''));
           if (decodedToken.exp * 1000 < Date.now()) {
-            // Token is expired
+            // Token expired
             localStorage.removeItem('userToken');
             setUserToken(null);
           } else {
-            // Token is valid
+            // Valid token
             setUserToken(token);
-            // Try to load cart
-            loadUserCart(token);
           }
-        } catch (decodeError) {
-          console.error('Error decoding token:', decodeError);
+        } catch (error) {
+          console.error('Error decoding token:', error);
           localStorage.removeItem('userToken');
           setUserToken(null);
         }
-      } catch (error) {
-        console.error('Token format error:', error);
-        localStorage.removeItem('userToken');
-        setUserToken(null);
       }
-    }
+      setIsLoading(false);
+    };
+
+    loadToken();
   }, []);
 
-  const loadUserCart = async (token) => {
-    try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_BASE_URL}/cart`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      if (response.data && response.data.status === 'success') {
-        // Cart loaded successfully
-        console.log('Cart loaded successfully');
-      }
-    } catch (error) {
-      console.error('Failed to load cart:', error);
-      // Don't throw error here as it's handled in the CartContext
+  // Sync token with localStorage
+  useEffect(() => {
+    if (userToken) {
+      const token = userToken.startsWith('Bearer ') ? userToken : `Bearer ${userToken}`;
+      localStorage.setItem('userToken', token);
+    } else {
+      localStorage.removeItem('userToken');
     }
-  };
+  }, [userToken]);
+
+  // Logout function
+  const logout = useCallback(() => {
+    setUserToken(null);
+    localStorage.removeItem('userToken');
+  }, []);
+
+  // Get token without 'Bearer ' prefix
+  const getToken = useCallback(() => {
+    if (!userToken) return null;
+    return userToken.replace(/^Bearer\s+/, '');
+  }, [userToken]);
 
   return (
-    <UserContext.Provider value={{ userToken, setUserToken }}>
-      {children}
+    <UserContext.Provider 
+      value={{
+        userToken,
+        setUserToken,
+        logout,
+        getToken,
+        isAuthenticated: !!userToken,
+        isLoading
+      }}
+    >
+      {!isLoading && children}
     </UserContext.Provider>
   );
 };
 
-export const useUser = () => useContext(UserContext);
+export const useUser = () => {
+  const context = useContext(UserContext);
+  if (context === undefined) {
+    throw new Error('useUser must be used within a UserProvider');
+  }
+  return context;
+};

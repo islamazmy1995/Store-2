@@ -1,42 +1,54 @@
-import './App.css';
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import Layout from "./component/Layout/Layout";
-import Home from "./component/Home/Home";
-import NotFound from "./component/NotFound/NotFound";
-import Cart from "./component/cart/Cart";
-import Brands from "./component/Brands/Brands";
-import Login from "./component/Login/Login";
-import Register from './component/Register/Register';
-import Category from "./component/Categories/Categories";
-import { CounterContextProvider } from "./component/Context/CounterContext";
-import { UserContextProvider } from "./component/Context/UserContext";
-import ProtectedRoute from './component/ProtectedRoute/ProtectedRoute';
-import FeaturedProducts from './component/Products/FeaturedProducts';
-import ProductDetails from './component/ProductDetails/ProductDetails';  
-import { CartProvider } from './component/Context/CartContext';  
+import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import "slick-carousel/slick/slick.css"; 
-import "slick-carousel/slick/slick-theme.css";
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { UserContextProvider } from './component/Context/UserContext';
+import { CartProvider } from './component/Context/CartContext';
+import { CounterContextProvider } from './component/Context/CounterContext';
+import Layout from './component/Layout/Layout';
+import Home from './component/Home/Home';
+import Cart from './component/cart/Cart';
+import Brands from './component/Brands/Brands';
+import Categories from './component/Categories/Categories';
+import Login from './component/Login/Login';
+import Register from './component/Register/Register';
+import NotFound from './component/NotFound/NotFound';
+import FeaturedProducts from './component/Products/FeaturedProducts';
+import ProductDetails from './component/ProductDetails/ProductDetails';
+import ProtectedRoute from './component/ProtectedRoute/ProtectedRoute';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+import 'slick-carousel/slick/slick.css';
+import 'slick-carousel/slick/slick-theme.css';
+import './App.css';
 
-const queryClient = new QueryClient();
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
+// Define routes
 const router = createBrowserRouter([
   {
-    path: "/",
+    path: '/',
     element: <Layout />,
     children: [
-      { index: true, element: <ProtectedRoute><Home /></ProtectedRoute> },
-      { path: "cart", element: <ProtectedRoute><Cart /></ProtectedRoute> },
-      { path: "brands", element: <ProtectedRoute><Brands /></ProtectedRoute> },
-      { path: "category", element: <ProtectedRoute><Category /></ProtectedRoute> },
-      { path: "featured", element: <ProtectedRoute><FeaturedProducts /></ProtectedRoute> },
-      { path: "ProductDetails/:id", element: <ProtectedRoute><ProductDetails /></ProtectedRoute> },  // صححت هنا برضو
-      { path: "login", element: <Login /> },
-      { path: "register", element: <Register /> },
+      { index: true, element: <Home /> },
+      { path: 'cart', element: <ProtectedRoute><Cart /></ProtectedRoute> },
+      { path: 'brands', element: <Brands /> },
+      { path: 'categories', element: <Categories /> },
+      { path: 'featured', element: <FeaturedProducts /> },
+      { path: 'products/:id', element: <ProductDetails /> },
+      { path: 'login', element: <Login /> },
+      { path: 'register', element: <Register /> },
     ],
   },
   {
-    path: "*",
+    path: '*',
     element: <NotFound />,
   },
 ]);
@@ -47,7 +59,9 @@ function App() {
       <UserContextProvider>
         <CartProvider>
           <CounterContextProvider>
-            <RouterProvider router={router} />
+            <div className="App">
+              <RouterProvider router={router} />
+            </div>
           </CounterContextProvider>
         </CartProvider>
       </UserContextProvider>
